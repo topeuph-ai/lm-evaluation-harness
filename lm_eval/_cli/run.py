@@ -290,6 +290,14 @@ class Run(SubCommand):
             help="Trackio init arguments key=val key2=val2 (e.g. project=my-evals)",
         )
         logging_group.add_argument(
+            "--valichord_args",
+            default=None,
+            nargs="+",
+            action=MergeDictAction,
+            metavar="<args>",
+            help="ValiChord attestation arguments key=val key2=val2 (e.g. output_path=./results)",
+        )
+        logging_group.add_argument(
             "--hf_hub_log_args",
             default=None,
             nargs="+",
@@ -355,7 +363,12 @@ class Run(SubCommand):
         cfg = EvaluatorConfig.from_cli(args)
 
         from lm_eval import simple_evaluate
-        from lm_eval.loggers import EvaluationTracker, TrackioLogger, WandbLogger
+        from lm_eval.loggers import (
+            EvaluationTracker,
+            TrackioLogger,
+            ValiChordLogger,
+            WandbLogger,
+        )
         from lm_eval.utils import handle_non_serializable, make_table
 
         # Set up logging
@@ -363,6 +376,8 @@ class Run(SubCommand):
             wandb_logger = WandbLogger(cfg.wandb_args, cfg.wandb_config_args)
         if cfg.trackio_args:
             trackio_logger = TrackioLogger(cfg.trackio_args)
+        if cfg.valichord_args:
+            valichord_logger = ValiChordLogger(cfg.valichord_args)
 
         # Set up evaluation tracker
         if cfg.output_path:
@@ -457,6 +472,16 @@ class Run(SubCommand):
                         trackio_logger.log_eval_samples(samples)
                 except Exception as e:  # noqa: BLE001
                     eval_logger.info("Logging to Trackio failed: %s", e)
+
+            # ValiChord attestation
+            if cfg.valichord_args:
+                try:
+                    valichord_logger.post_init(results)
+                    valichord_logger.log_eval_result()
+                    if cfg.log_samples:
+                        valichord_logger.log_eval_samples(samples)
+                except Exception as e:  # noqa: BLE001
+                    eval_logger.info("ValiChord attestation failed: %s", e)
 
             # Save results
             evaluation_tracker.save_results_aggregated(
