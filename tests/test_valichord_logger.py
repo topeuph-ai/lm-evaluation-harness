@@ -247,34 +247,30 @@ def test_post_init_stores_task_names(logger_cls):
     assert lg._task_names == ["arc_easy"]
 
 
-def test_log_eval_result_calls_build_bundle(logger_cls, fake_valichord):
+def test_log_eval_result_is_noop(logger_cls, fake_valichord):
     calls = []
     original = fake_valichord.build_bundle
     fake_valichord.build_bundle = lambda **kw: (calls.append(kw), original(**kw))[1]
 
     lg = logger_cls({})
     lg.post_init(_make_results())
-    lg.log_eval_result()
+    lg.log_eval_result()  # bundle requires samples; should be a no-op
 
-    assert len(calls) == 1
-    assert calls[0]["model_id"] == "hf/EleutherAI/pythia-70m"
-    assert calls[0]["task_id"] == "arc_easy"
-    assert calls[0]["samples"] == []
+    assert len(calls) == 0
 
 
-def test_log_eval_samples_rebuilds_with_samples(logger_cls, fake_valichord):
+def test_log_eval_samples_builds_bundle_with_samples(logger_cls, fake_valichord):
     calls = []
     original = fake_valichord.build_bundle
     fake_valichord.build_bundle = lambda **kw: (calls.append(kw), original(**kw))[1]
 
     lg = logger_cls({})
     lg.post_init(_make_results())
-    lg.log_eval_result()
     lg.log_eval_samples(_make_samples())
 
-    assert len(calls) == 2
-    assert len(calls[1]["samples"]) == 3
-    assert calls[1]["samples_total"] == 3
+    assert len(calls) == 1
+    assert len(calls[0]["samples"]) == 3
+    assert calls[0]["samples_total"] == 3
 
 
 def test_task_id_multi_task_sorted(logger_cls, fake_valichord):
@@ -288,7 +284,7 @@ def test_task_id_multi_task_sorted(logger_cls, fake_valichord):
     })
     lg = logger_cls({})
     lg.post_init(results)
-    lg.log_eval_result()
+    lg.log_eval_samples(_make_samples(["arc_easy", "hellaswag"]))
 
     assert calls[0]["task_id"] == "arc_easy+hellaswag"
 
@@ -300,7 +296,7 @@ def test_task_id_override(logger_cls, fake_valichord):
 
     lg = logger_cls({"task_id": "my-custom-task"})
     lg.post_init(_make_results())
-    lg.log_eval_result()
+    lg.log_eval_samples(_make_samples())
 
     assert calls[0]["task_id"] == "my-custom-task"
 
@@ -312,7 +308,7 @@ def test_repo_commit_from_git_hash(logger_cls, fake_valichord):
 
     lg = logger_cls({})
     lg.post_init(_make_results(git_hash="deadbeef"))
-    lg.log_eval_result()
+    lg.log_eval_samples(_make_samples())
 
     assert calls[0]["repo_commit"] == "deadbeef"
 
@@ -324,7 +320,7 @@ def test_repo_commit_none_when_no_git_hash(logger_cls, fake_valichord):
 
     lg = logger_cls({})
     lg.post_init(_make_results(git_hash=None))
-    lg.log_eval_result()
+    lg.log_eval_samples(_make_samples())
 
     assert calls[0]["repo_commit"] is None
 
@@ -337,7 +333,7 @@ def test_no_metrics_skips_bundle(logger_cls, fake_valichord):
     results = _make_results(tasks={"t": {"not_a_metric": "string_value"}})
     lg = logger_cls({})
     lg.post_init(results)
-    lg.log_eval_result()
+    lg.log_eval_samples(_make_samples(["t"]))
 
     assert len(calls) == 0
 
@@ -345,7 +341,7 @@ def test_no_metrics_skips_bundle(logger_cls, fake_valichord):
 def test_bundle_written_to_output_path(logger_cls, tmp_path):
     lg = logger_cls({"output_path": str(tmp_path)})
     lg.post_init(_make_results())
-    lg.log_eval_result()
+    lg.log_eval_samples(_make_samples())
 
     model_dir = tmp_path / "EleutherAI__pythia-70m"
     bundles = list(model_dir.glob("valichord_bundle_*.json"))
@@ -354,22 +350,20 @@ def test_bundle_written_to_output_path(logger_cls, tmp_path):
     assert data["fake"] is True
 
 
-def test_bundle_overwritten_on_log_eval_samples(logger_cls, tmp_path):
+def test_log_eval_result_writes_no_bundle(logger_cls, tmp_path):
     lg = logger_cls({"output_path": str(tmp_path)})
     lg.post_init(_make_results())
-    lg.log_eval_result()
-    lg.log_eval_samples(_make_samples())
+    lg.log_eval_result()  # no-op — samples required
 
     model_dir = tmp_path / "EleutherAI__pythia-70m"
     bundles = list(model_dir.glob("valichord_bundle_*.json"))
-    # log_eval_result writes once, log_eval_samples writes again (different timestamp)
-    assert len(bundles) >= 1
+    assert len(bundles) == 0
 
 
 def test_no_output_path_does_not_write(logger_cls, tmp_path):
     lg = logger_cls({})
     lg.post_init(_make_results())
-    lg.log_eval_result()
+    lg.log_eval_samples(_make_samples())
     assert lg._bundle_path is None
 
 
@@ -382,4 +376,4 @@ def test_build_bundle_exception_does_not_propagate(logger_cls, fake_valichord):
     fake_valichord.build_bundle = MagicMock(side_effect=RuntimeError("boom"))
     lg = logger_cls({})
     lg.post_init(_make_results())
-    lg.log_eval_result()  # must not raise
+    lg.log_eval_samples(_make_samples())  # must not raise

@@ -516,3 +516,6 @@ class Run(SubCommand):
 
             if cfg.trackio_args:
                 trackio_logger.finish()
+
+            if cfg.valichord_args:
+                valichord_logger.finish()

@@ -143,11 +143,16 @@ class ValiChordLogger:
         self._task_names = list(results.get("results", {}).keys())
 
     def log_eval_result(self) -> None:
-        """Build and save a metrics-only bundle (no per-sample Merkle tree)."""
-        self._save_bundle(samples=None)
+        """No-op: the attestation bundle requires per-sample data.
+
+        The bundle is written in ``log_eval_samples`` once ``filtered_resps``
+        are available.  This method exists to satisfy the logger protocol used
+        by ``wandb``/``trackio`` loggers; it intentionally does nothing here.
+        Pair with ``--log_samples`` to produce a bundle.
+        """
 
     def log_eval_samples(self, samples: dict[str, list[dict[str, Any]]]) -> None:
-        """Rebuild the bundle with the full per-sample Merkle tree."""
+        """Build and save the attestation bundle with the full per-sample Merkle tree."""
         self._save_bundle(samples=samples)
 
     def finish(self) -> None:
